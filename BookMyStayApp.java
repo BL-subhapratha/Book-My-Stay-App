@@ -1,72 +1,112 @@
+import src.model.Amenity;
+import src.model.RoomCatalogue;
+import src.model.RoomDetails;
 import src.model.RoomInventory;
 import src.model.RoomType;
+import src.model.SearchCriteria;
 import src.services.InventoryService;
+import src.services.SearchService;
+
+import java.util.List;
 
 public class BookMyStayApp {
 
     public static void main(String[] args) {
 
-        // --- Step 1: Initialise the inventory data structure ---
-        RoomInventory inventory = new RoomInventory();
-        InventoryService service = new InventoryService(inventory);
+        // =====================================================================
+        // SETUP — shared state (single source of truth)
+        // =====================================================================
+        RoomInventory    inventory  = new RoomInventory();
+        RoomCatalogue    catalogue  = new RoomCatalogue();
+        InventoryService adminSvc   = new InventoryService(inventory);
+        SearchService    searchSvc  = new SearchService(inventory, catalogue);
 
-        System.out.println("=== BookMyStay: Use Case 1 — Room Inventory Setup ===\n");
+        // =====================================================================
+        // USE CASE 1 — Admin seeds inventory
+        // =====================================================================
+        System.out.println("====================================================");
+        System.out.println("  UC1: Room Inventory Setup");
+        System.out.println("====================================================");
 
-        // --- Step 2: Hotel Admin seeds room types ---
-        // HashMap.put() → O(1) insertion
-        service.setupRoomType(RoomType.SINGLE, 10, 89.99);
-        service.setupRoomType(RoomType.DOUBLE, 8,  149.99);
-        service.setupRoomType(RoomType.SUITE,  3,  299.99);
+        adminSvc.setupRoomType(RoomType.SINGLE, 10, 89.99);
+        adminSvc.setupRoomType(RoomType.DOUBLE, 8,  149.99);
+        adminSvc.setupRoomType(RoomType.SUITE,  3,  299.99);
+        adminSvc.showInventory();
 
-        // --- Step 3: View initial inventory ---
-        service.showInventory();
+        // =====================================================================
+        // USE CASE 2 — Guest searches
+        // =====================================================================
+        System.out.println("\n====================================================");
+        System.out.println("  UC2: Room Search & Availability Check");
+        System.out.println("====================================================");
 
-        // --- Step 4: Guest checks availability ---
-        System.out.println("\n=== Guest Availability Checks ===");
-        service.checkAvailability(RoomType.SINGLE);
-        service.checkAvailability(RoomType.SUITE);
+        // --- Search 1: Browse all rooms (no filters) ---
+        System.out.println("\n[Scenario A] Guest browses the full catalogue");
+        List<RoomDetails> allRooms = searchSvc.searchAll();
+        searchSvc.printResults(allRooms);
 
-        // --- Step 5: Admin dynamic updates ---
-        System.out.println("\n=== Admin: Dynamic Updates ===");
+        // --- Search 2: Only available rooms ---
+        System.out.println("\n[Scenario B] Guest filters to available rooms only");
+        List<RoomDetails> available = searchSvc.searchAvailable();
+        searchSvc.printResults(available);
 
-        // Reprice suites for peak season
-        service.repriceRoom(RoomType.SUITE, 379.99);
+        // --- Search 3: Budget filter (max £150/night) ---
+        System.out.println("\n[Scenario C] Guest sets a budget of max 150/night");
+        SearchCriteria budgetSearch = new SearchCriteria.Builder()
+                .maxPricePerNight(150.0)
+                .onlyAvailable(true)
+                .build();
+        searchSvc.printResults(searchSvc.search(budgetSearch));
 
-        // Restock singles after room renovation completes
-        service.restockRooms(RoomType.SINGLE, 5);
+        // --- Search 4: Amenity filter (must have Breakfast + King Bed) ---
+        System.out.println("\n[Scenario D] Guest requires Breakfast and King-Size Bed");
+        SearchCriteria amenitySearch = new SearchCriteria.Builder()
+                .requiredAmenity(Amenity.BREAKFAST)
+                .requiredAmenity(Amenity.KING_BED)
+                .onlyAvailable(true)
+                .build();
+        searchSvc.printResults(searchSvc.search(amenitySearch));
 
-        // --- Step 6: Simulate inventory hold (room reserved by booking service) ---
-        System.out.println("\n=== Booking Service: Inventory Hold Simulation ===");
-        System.out.println("Holding 2 Double rooms for pending reservations...");
-        service.holdRoom(RoomType.DOUBLE);
-        service.holdRoom(RoomType.DOUBLE);
+        // --- Search 5: Exact type lookup ---
+        System.out.println("\n[Scenario E] Guest looks up the Suite specifically");
+        SearchCriteria suiteSearch = new SearchCriteria.Builder()
+                .roomType(RoomType.SUITE)
+                .onlyAvailable(false)
+                .build();
+        searchSvc.printResults(searchSvc.search(suiteSearch));
 
-        // --- Step 7: Final inventory state ---
-        service.showInventory();
+        // =====================================================================
+        // Live inventory change mid-session — search reflects it immediately
+        // =====================================================================
+        System.out.println("\n====================================================");
+        System.out.println("  Admin Update: Singles sold out, Suite repriced");
+        System.out.println("====================================================");
+        inventory.updateRoomCount(RoomType.SINGLE, 0);
+        inventory.updateRoomPrice(RoomType.SUITE, 379.99);
 
-        // --- Step 8: Edge case — sell-out scenario ---
-        System.out.println("\n=== Edge Case: Sell-Out Scenario ===");
-        // Hold all 3 suites
-        service.holdRoom(RoomType.SUITE);
-        service.holdRoom(RoomType.SUITE);
-        service.holdRoom(RoomType.SUITE);
+        System.out.println("\n[Scenario F] Same budget search after admin update");
+        searchSvc.printResults(searchSvc.search(budgetSearch));
 
-        // Now check suite availability
-        service.checkAvailability(RoomType.SUITE);
+        // =====================================================================
+        // Availability guard — prevents booking unavailable rooms
+        // =====================================================================
+        System.out.println("\n====================================================");
+        System.out.println("  UC2 Guard: Booking attempt on sold-out room");
+        System.out.println("====================================================");
 
-        // Attempt to hold one more — should throw
-        System.out.println("\nAttempting to hold a 4th Suite (should fail)...");
+        System.out.println("\nGuest attempts to book a Single Room (now sold out)...");
         try {
-            service.holdRoom(RoomType.SUITE);
+            searchSvc.assertBookable(RoomType.SINGLE);
         } catch (IllegalStateException e) {
-            System.out.println("[Error Caught] " + e.getMessage());
-            System.out.println("→ Overbooking prevented by inventory guard.");
+            System.out.println("[Booking Blocked] " + e.getMessage());
         }
 
-        // --- Step 9: Cancellation releases the room ---
-        System.out.println("\n=== Cancellation: Room Released ===");
-        service.releaseRoom(RoomType.SUITE);
-        service.checkAvailability(RoomType.SUITE);
-
+        System.out.println("\nGuest attempts to book a Double Room (still available)...");
+        try {
+            searchSvc.assertBookable(RoomType.DOUBLE);
+            System.out.println("[Booking Allowed] Double Room passed availability check.");
+        } catch (IllegalStateException e) {
+            System.out.println("[Booking Blocked] " + e.getMessage());
+        }
     }
 }
