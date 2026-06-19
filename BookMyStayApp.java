@@ -6,9 +6,12 @@ import src.model.RoomInventory;
 import src.model.RoomType;
 import src.model.Reservation;
 import src.model.SearchCriteria;
+import src.services.AddOnService;
+import src.services.AllocationService;
 import src.services.BookingQueueService;
 import src.services.InventoryService;
 import src.services.SearchService;
+import src.model.Service;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -119,6 +122,77 @@ public class BookMyStayApp {
         // =====================================================================
         section("Full Booking Processing Summary");
         queueSvc.printProcessingSummary();
+
+        // =====================================================================
+        // UC4 — Reservation Confirmation & Room Allocation
+        // =====================================================================
+        section("UC4: Reservation Confirmation & Room Allocation");
+
+        AllocationService allocSvc = new AllocationService(adminSvc, searchSvc);
+
+        Reservation res_alice = new Reservation("Alice", RoomType.SINGLE, today.plusDays(1), today.plusDays(3));
+        Reservation res_bob   = new Reservation("Bob",   RoomType.DOUBLE, today.plusDays(2), today.plusDays(5));
+        Reservation res_carol = new Reservation("Carol", RoomType.SUITE,  today.plusDays(1), today.plusDays(4));
+        Reservation res_dave  = new Reservation("Dave",  RoomType.DOUBLE, today.plusDays(3), today.plusDays(6));
+        Reservation res_eve   = new Reservation("Eve",   RoomType.SUITE,  today.plusDays(2), today.plusDays(5));
+
+        allocSvc.enqueueRequest(res_alice);
+        allocSvc.enqueueRequest(res_bob);
+        allocSvc.enqueueRequest(res_carol);
+        allocSvc.enqueueRequest(res_dave);
+        allocSvc.enqueueRequest(res_eve);
+
+        allocSvc.processAll();
+
+        adminSvc.showInventory();
+        allocSvc.printAllocationLog();
+        allocSvc.printAvailablePool();
+
+
+        // =====================================================================
+        // UC5 — Add-On Service Selection
+        // =====================================================================
+        section("UC5: Add-On Service Selection");
+        System.out.println("Data Structure : Map<String, List<Service>>  (LinkedHashMap)");
+        System.out.println("Key Concept    : One-to-many mapping — one reservation → many services\n");
+
+        AddOnService addOnSvc = new AddOnService(allocSvc.getProcessedResults());
+
+        // Retrieve reservation IDs from the UC4 allocation log
+        String aliceId = res_alice.getReservationId();
+        String bobId   = res_bob.getReservationId();
+        String carolId = res_carol.getReservationId();
+
+        // Alice selects multiple services — demonstrates List growing under one key
+        System.out.println("Alice selects add-on services (" + aliceId + "):");
+        addOnSvc.addService(aliceId, Service.Type.BREAKFAST,      2);
+        addOnSvc.addService(aliceId, Service.Type.AIRPORT_PICKUP, 1);
+        addOnSvc.addService(aliceId, Service.Type.SPA,            1);
+
+        // Bob selects services
+        System.out.println("\nBob selects add-on services (" + bobId + "):");
+        addOnSvc.addService(bobId, Service.Type.BREAKFAST,    2);
+        addOnSvc.addService(bobId, Service.Type.ROOM_SERVICE, 1);
+
+        // Carol selects services
+        System.out.println("\nCarol selects add-on services (" + carolId + "):");
+        addOnSvc.addService(carolId, Service.Type.SPA,          2);
+        addOnSvc.addService(carolId, Service.Type.LATE_CHECKOUT, 1);
+
+        // removeLastService demo — Alice changes her mind about the spa
+        System.out.println("\n[Remove Last Demo] Alice removes her last selected service:");
+        addOnSvc.removeLastService(aliceId);
+
+        // Validation demo — declined reservation cannot get add-ons
+        System.out.println("\n[Validation Demo] Attempting add-on on a declined reservation:");
+        addOnSvc.addService(res_eve.getReservationId(), Service.Type.BREAKFAST, 1);
+
+        // Receipts
+        addOnSvc.printServiceReceipt(aliceId);
+        addOnSvc.printServiceReceipt(bobId);
+
+        // Full summary across all reservations
+        addOnSvc.printAllServiceSummaries();
     }
 
     private static void section(String title) {
