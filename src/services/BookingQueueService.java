@@ -203,4 +203,12 @@ public class BookingQueueService {
 
         return BookingResult.confirmed(r, totalCost);
     }
+
+    protected SearchService getSearchService() {
+        return searchService;
+    }
+
+    protected InventoryService getInventoryService() {
+        return inventoryService;
+    }
 }
