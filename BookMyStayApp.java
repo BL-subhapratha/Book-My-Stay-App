@@ -119,8 +119,6 @@ public class BookMyStayApp {
         // =====================================================================
         section("Full Booking Processing Summary");
         queueSvc.printProcessingSummary();
-
-        System.out.println("\n=== Use Case 3 Complete ===");
     }
 
     private static void section(String title) {
