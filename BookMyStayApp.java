@@ -10,6 +10,7 @@ import src.services.AddOnService;
 import src.services.AllocationService;
 import src.services.BookingQueueService;
 import src.services.InventoryService;
+import src.services.ReportingService;
 import src.services.SearchService;
 import src.model.Service;
 
@@ -117,11 +118,6 @@ public class BookMyStayApp {
         queueSvc.enqueueRequest(new Reservation("Iris", RoomType.SUITE, today.plusDays(2), today.plusDays(4)));
         queueSvc.processNext();
 
-        // =====================================================================
-        // FULL PROCESSING SUMMARY
-        // =====================================================================
-        section("Full Booking Processing Summary");
-        queueSvc.printProcessingSummary();
 
         // =====================================================================
         // UC4 — Reservation Confirmation & Room Allocation
@@ -193,6 +189,51 @@ public class BookMyStayApp {
 
         // Full summary across all reservations
         addOnSvc.printAllServiceSummaries();
+
+        // =====================================================================
+        // UC6 — Booking History & Reporting
+        // =====================================================================
+        section("UC6: Booking History & Reporting");
+        System.out.println("Data Structure : List<Reservation>  (ArrayList)");
+        System.out.println("Key Concept    : Ordered, persistent history — confirm → record → retrieve\n");
+
+        ReportingService reportingSvc = new ReportingService();
+
+        // Record every confirmed booking from UC4's processed results
+        System.out.println("Recording all confirmed bookings into history:");
+        for (BookingResult result : allocSvc.getProcessedResults()) {
+            reportingSvc.recordIfConfirmed(result);
+
+        // =====================================================================
+        // FULL PROCESSING SUMMARY
+        // =====================================================================
+        section("Full Booking Processing Summary");
+        queueSvc.printProcessingSummary();
+        }
+
+        // Full chronological history
+        reportingSvc.printFullHistory();
+
+        // Guest lookup — customer support scenario
+        reportingSvc.printGuestHistory("Alice");
+
+        // Cancellation demo — soft delete, record stays in history
+        System.out.println("\n[Cancellation Demo] Bob decides to cancel his booking:");
+        reportingSvc.cancelBooking(bobId);
+
+        // Release Bob's room back to inventory since he cancelled
+        adminSvc.releaseRoom(res_bob.getRoomType());
+        System.out.println("  → Room released back to inventory.");
+
+        // History after cancellation — record retained, marked cancelled
+        reportingSvc.printFullHistory();
+
+        // Active bookings only
+        System.out.println("\n[Active Bookings Only]");
+        reportingSvc.getActiveBookings().forEach(r -> System.out.println("  " + r));
+
+        // Summary report for admin
+        reportingSvc.printSummaryReport();
     }
 
     private static void section(String title) {
